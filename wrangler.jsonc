@@ -1,0 +1,16 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "crud-services",
+	"main": "src/index.ts",
+	"compatibility_date": "2025-12-14",
+	"vars": {
+		"JWT_SECRET": "your-secret-key-here",
+	},
+	"d1_databases": [
+		{
+			"binding": "D1",
+			"database_name": "crud-services",
+			"database_id": "5b9f5c07-ecfc-49cf-b6ae-259f8b5b2bde"
+		}
+	]
+}
