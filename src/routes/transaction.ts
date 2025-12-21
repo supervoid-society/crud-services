@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { authMiddleware } from "../middleware/auth";
+import { sign, verify } from "@tsndr/cloudflare-worker-jwt";
 
 interface JWTPayload {
   userId: string;
@@ -10,7 +11,6 @@ interface JWTPayload {
 
 type Bindings = {
   JWT_SECRET: string;
-  AUTH_URL: string;
   D1: D1Database;
 };
 
@@ -81,5 +81,74 @@ transaction.put("/:id", authMiddleware, async (c) => {
   await c.env.D1.prepare("UPDATE transactions SET status = ?, updated_at = current_timestamp WHERE id = ?").bind(status, id).run();
   return c.json({ message: "Transaction updated" });
 });
+
+// Checkout endpoint
+transaction.post("/checkout", authMiddleware, async (c) => {
+  const { itemId, quantity, balance, signature } = await c.req.json();
+  console.log("Checkout request:", { itemId, quantity, balance });
+
+  const payload = c.get("jwtPayload");
+
+  if (payload.role !== 'buyer') {
+    return c.json({ error: "Only buyers can checkout" }, 403);
+  }
+
+  const buyerId = payload.userId;
+
+  // Verify balance signature
+  try {
+    const decoded = await verify(signature, c.env.JWT_SECRET);
+    if (!decoded) {
+      return c.json({ error: "Invalid signature" }, 400);
+    }
+    const sigPayload = decoded.payload as any;
+    if (!sigPayload ||
+        sigPayload.balance !== balance ||
+        sigPayload.userId !== buyerId ||
+        (Date.now() - sigPayload.timestamp) > 300000) { // 5 minutes expiry
+      return c.json({ error: "Invalid signature or expired" }, 400);
+    }
+  } catch (error) {
+    return c.json({ error: "Signature verification failed" }, 400);
+  }
+
+  // Get cart item to get catalog item_id
+  const cartItem = await c.env.D1.prepare("SELECT item_id, quantity as cartQuantity FROM cart WHERE id = ? AND user_id = ?").bind(itemId, buyerId).first() as { item_id: string; cartQuantity: number } | undefined;
+  if (!cartItem) {
+    return c.json({ error: "Cart item not found" }, 404);
+  }
+
+  const catalogItemId = cartItem.item_id;
+  const actualQuantity = cartItem.cartQuantity; // Use quantity from cart, ignore frontend
+
+  // Get item details
+  const item = await c.env.D1.prepare("SELECT price, user_id as sellerId FROM catalog_items WHERE id = ?").bind(catalogItemId).first() as { price: number; sellerId: string } | undefined;
+  console.log("Item found:", item);
+
+  if (!item) {
+    return c.json({ error: "Catalog item not found" }, 404);
+  }
+
+  const amount = item.price * actualQuantity;
+
+  if (balance < amount) {
+    return c.json({ error: "Insufficient balance" }, 400);
+  }
+
+  // Create transaction
+  const transactionId = crypto.randomUUID();
+  await c.env.D1.prepare(
+    "INSERT INTO transactions (id, buyer_id, seller_id, item_id, quantity, amount, status) VALUES (?, ?, ?, ?, ?, ?, 'pending')"
+  ).bind(transactionId, buyerId, item.sellerId, catalogItemId, actualQuantity, amount).run();
+
+  // Create signature for transfer
+  const transferData = { transactionId, sellerId: item.sellerId, amount, buyerId };
+  const transferSignature = await sign(transferData, c.env.JWT_SECRET);
+
+  return c.json({ transactionId, sellerId: item.sellerId, amount, signature: transferSignature });
+});
+
+// Test route
+transaction.get("/test", (c) => c.text("Transaction routes working"));
 
 export default transaction;

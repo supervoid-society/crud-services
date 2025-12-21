@@ -5,7 +5,6 @@ import { saveImage } from "../utils/image";
 
 type Bindings = {
   JWT_SECRET: string;
-  AUTH_URL: string;
   D1: D1Database;
 };
 
@@ -48,10 +47,6 @@ interface CartItemWithStock extends CartItem {
   price: number;
   available_qty: number;
   seller_id: string;
-}
-
-interface BalanceResponse {
-  balance: number;
 }
 
 const catalog = new Hono<{ Bindings: Bindings; Variables: { jwtPayload: JWTPayload } }>();
@@ -415,7 +410,6 @@ catalog.post("/checkout", async (c) => {
   }
 
   const buyerId = payload.userId;
-  const AUTH_URL = c.env.AUTH_URL;
 
   // Get cart items from database
   const cartItems = await c.env.D1.prepare(`
@@ -430,8 +424,7 @@ catalog.post("/checkout", async (c) => {
     return c.json({ error: "Cart is empty" }, 400);
   }
 
-  // Check stock and calculate total
-  let totalAmount = 0;
+  // Check stock
   const stockChecks: { item: CartItemWithStock; existingItem: CartItemWithStock }[] = [];
   
   for (const cartItem of cartItems.results as unknown as CartItemWithStock[]) {
@@ -440,47 +433,13 @@ catalog.post("/checkout", async (c) => {
       return c.json({ error: `Insufficient stock for ${cartItem.name}. Available: ${currentQty}, requested: ${cartItem.quantity}` }, 400);
     }
     
-    totalAmount += cartItem.price * cartItem.quantity;
     stockChecks.push({ item: cartItem, existingItem: cartItem });
   }
 
-  // Check balance
-  try {
-    const balanceRes = await fetch(`${AUTH_URL}/auth/balance/${buyerId}/buyer`);
-    if (!balanceRes.ok) {
-      console.error(`Balance check failed: ${balanceRes.status} ${balanceRes.statusText}`);
-      const errorText = await balanceRes.text();
-      console.error(`Balance response: ${errorText}`);
-      return c.json({ error: `Failed to check balance: ${AUTH_URL}/auth/balance/${buyerId}/buyer\n${errorText}` }, 500);
-    }
-
-    const balanceData = await balanceRes.json() as BalanceResponse;
-    if (balanceData.balance < totalAmount) {
-      return c.json({ error: `Insufficient balance. Available: ${balanceData.balance}, needed: ${totalAmount}` }, 400);
-    }
-  } catch (error) {
-    console.error("Balance check error:", error);
-    return c.json({ error: "Balance check failed" }, 500);
-  }
-
-  // Process transfers and transactions
+  // Process transactions (transfers handled externally)
   for (const { item, existingItem } of stockChecks) {
     const sellerId = existingItem.seller_id;
     const amount = existingItem.price * item.quantity;
-
-    // Transfer money
-    try {
-      const transferRes = await fetch(`${AUTH_URL}/auth/transfer`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ buyerId, sellerId, amount }),
-      });
-      if (!transferRes.ok) {
-        return c.json({ error: "Transfer failed" }, 500);
-      }
-    } catch {
-      return c.json({ error: "Transfer request failed" }, 500);
-    }
 
     // Create transaction
     try {

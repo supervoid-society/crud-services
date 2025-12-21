@@ -6,7 +6,7 @@ import transactionRoutes from "./routes/transaction";
 import reviewRoutes from "./routes/reviews";
 
 interface JWTPayload {
-  userId: number;
+  userId: string;
   username: string;
   role: string;
   exp: number;
@@ -14,7 +14,6 @@ interface JWTPayload {
 
 type Bindings = {
   JWT_SECRET: string;
-  AUTH_URL: string;
   D1: D1Database;
 };
 
