@@ -13,8 +13,8 @@ images.get("/:id", async (c) => {
   if (!image) {
     return c.json({ error: "Image not found" }, 404);
   }
-  const data = (image as { data: Uint8Array; content_type: string }).data as Uint8Array;
-  return c.body(data, { headers: { 'Content-Type': content_type } });
+  const { data, content_type } = image as { data: Uint8Array; content_type: string };
+  return c.newResponse(data as any, { headers: { 'Content-Type': content_type } });
 });
 
 export default images;
