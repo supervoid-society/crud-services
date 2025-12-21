@@ -7,9 +7,9 @@ CREATE TABLE catalog_items (
     description TEXT,
     price REAL NOT NULL,
     image_id TEXT,
+    user_id INTEGER NOT NULL,
     created_at TEXT DEFAULT current_timestamp,
-    updated_at TEXT DEFAULT current_timestamp,
-    created_by_id INTEGER
+    updated_at TEXT DEFAULT current_timestamp
 );
 
 CREATE TABLE images (
