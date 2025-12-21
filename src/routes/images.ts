@@ -2,6 +2,7 @@ import { Hono } from "hono";
 
 type Bindings = {
   JWT_SECRET: string;
+  AUTH_URL: string;
   D1: D1Database;
 };
 

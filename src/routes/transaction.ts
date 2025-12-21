@@ -10,6 +10,7 @@ interface JWTPayload {
 
 type Bindings = {
   JWT_SECRET: string;
+  AUTH_URL: string;
   D1: D1Database;
 };
 
