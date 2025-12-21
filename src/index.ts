@@ -3,6 +3,7 @@ import { cors } from "hono/cors";
 import catalogRoutes from "./routes/catalog";
 import imageRoutes from "./routes/images";
 import transactionRoutes from "./routes/transaction";
+import reviewRoutes from "./routes/reviews";
 
 interface JWTPayload {
   userId: number;
@@ -27,5 +28,6 @@ app.get("/", (c) => {
 app.route("/catalog-items", catalogRoutes);
 app.route("/images", imageRoutes);
 app.route("/transactions", transactionRoutes);
+app.route("/reviews", reviewRoutes);
 
 export default app;

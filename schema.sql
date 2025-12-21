@@ -46,3 +46,18 @@ CREATE TABLE cart (
     FOREIGN KEY (item_id) REFERENCES catalog_items(id) ON DELETE CASCADE,
     UNIQUE(user_id, item_id)
 );
+
+DROP TABLE IF EXISTS reviews;
+
+CREATE TABLE reviews (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    transaction_id INTEGER NOT NULL,
+    rating INTEGER NOT NULL CHECK (rating >= 1 AND rating <= 5),
+    comment TEXT,
+    reply TEXT,
+    created_at TEXT DEFAULT current_timestamp,
+    updated_at TEXT DEFAULT current_timestamp,
+    FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_reviews_transaction_id ON reviews(transaction_id);
