@@ -13,13 +13,8 @@ images.get("/:id", async (c) => {
   if (!image) {
     return c.json({ error: "Image not found" }, 404);
   }
-  const data = (image as any).data as Uint8Array;
-  let binary = '';
-  for (let i = 0; i < data.length; i++) {
-    binary += String.fromCharCode(data[i]);
-  }
-  const base64 = btoa(binary);
-  return c.json({ data: base64, content_type: (image as any).content_type });
+  const data = (image as { data: Uint8Array; content_type: string }).data as Uint8Array;
+  return c.body(data, { headers: { 'Content-Type': content_type } });
 });
 
 export default images;

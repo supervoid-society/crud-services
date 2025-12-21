@@ -2,13 +2,21 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import catalogRoutes from "./routes/catalog";
 import imageRoutes from "./routes/images";
+import transactionRoutes from "./routes/transaction";
+
+interface JWTPayload {
+  userId: number;
+  username: string;
+  role: string;
+  exp: number;
+}
 
 type Bindings = {
   JWT_SECRET: string;
   D1: D1Database;
 };
 
-const app = new Hono<{ Bindings: Bindings; Variables: { jwtPayload: any } }>();
+const app = new Hono<{ Bindings: Bindings; Variables: { jwtPayload: JWTPayload } }>();
 
 app.use('*', cors({ origin: '*' }));
 
@@ -18,5 +26,6 @@ app.get("/", (c) => {
 
 app.route("/catalog-items", catalogRoutes);
 app.route("/images", imageRoutes);
+app.route("/transactions", transactionRoutes);
 
 export default app;

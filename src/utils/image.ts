@@ -1,4 +1,6 @@
-export async function saveImage(c: any, base64Data: string, contentType: string): Promise<string | null> {
+import { Context } from "hono";
+
+export async function saveImage(c: Context, base64Data: string, contentType: string): Promise<string | null> {
   try {
     const base64 = base64Data.replace(/^data:image\/[a-z]+;base64,/, '');
     const binaryData = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
