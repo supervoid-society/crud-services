@@ -5,7 +5,7 @@
 	"compatibility_date": "2025-12-14",
 	"vars": {
 		"JWT_SECRET": "your-secret-key-here",
-		"AUTH_URL": "https://auth-services.ahmenglabs.workers.dev"
+		"AUTH_URL": "http://localhost:8788"
 	},
 	"d1_databases": [
 		{
