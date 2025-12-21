@@ -5,6 +5,7 @@ import { saveImage } from "../utils/image";
 
 type Bindings = {
   JWT_SECRET: string;
+  AUTH_URL: string;
   D1: D1Database;
 };
 
@@ -414,7 +415,7 @@ catalog.post("/checkout", async (c) => {
   }
 
   const buyerId = payload.userId;
-  const AUTH_URL = "http://localhost:8787"; // Should be from env
+  const AUTH_URL = c.env.AUTH_URL;
 
   // Get cart items from database
   const cartItems = await c.env.D1.prepare(`
