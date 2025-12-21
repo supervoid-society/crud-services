@@ -451,8 +451,9 @@ catalog.post("/checkout", async (c) => {
       console.error(`Balance check failed: ${balanceRes.status} ${balanceRes.statusText}`);
       const errorText = await balanceRes.text();
       console.error(`Balance response: ${errorText}`);
-      return c.json({ error: `Failed to check balance: ${AUTH_URL}/auth/balance/${buyerId}/buyer` }, 500);
+      return c.json({ error: `Failed to check balance: ${AUTH_URL}/auth/balance/${buyerId}/buyer\n${errorText}` }, 500);
     }
+
     const balanceData = await balanceRes.json() as BalanceResponse;
     if (balanceData.balance < totalAmount) {
       return c.json({ error: `Insufficient balance. Available: ${balanceData.balance}, needed: ${totalAmount}` }, 400);
