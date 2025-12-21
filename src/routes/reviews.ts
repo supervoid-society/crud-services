@@ -7,7 +7,7 @@ type Bindings = {
 };
 
 interface JWTPayload {
-  userId: number;
+  userId: string;
   username: string;
   role: string;
   exp: number;
@@ -45,15 +45,15 @@ reviews.get("/:item_id", async (c) => {
     return c.json({ error: "Failed to fetch reviews" }, 500);
   }
 
-  const reviewsData: Review[] = reviewsResult.results.map((row: any) => ({
-    id: row.id,
-    transaction_id: row.transaction_id,
-    rating: row.rating,
-    comment: row.comment,
-    reply: row.reply,
-    created_at: row.created_at,
-    updated_at: row.updated_at,
-    buyer_id: row.buyer_id,
+  const reviewsData: Review[] = reviewsResult.results.map((row: Record<string, unknown>) => ({
+    id: Number(row.id),
+    transaction_id: Number(row.transaction_id),
+    rating: Number(row.rating),
+    comment: row.comment as string | null,
+    reply: row.reply as string | null,
+    created_at: row.created_at as string,
+    updated_at: row.updated_at as string,
+    buyer_id: Number(row.buyer_id),
   }));
 
   return c.json(reviewsData);
@@ -95,10 +95,11 @@ reviews.post("/", authMiddleware, async (c) => {
   }
 
   // Insert review
+  const reviewId = crypto.randomUUID();
   const insertResult = await c.env.D1.prepare(`
-    INSERT INTO reviews (transaction_id, rating, comment)
-    VALUES (?, ?, ?)
-  `).bind(transaction_id, rating, comment || null).run();
+    INSERT INTO reviews (id, transaction_id, rating, comment)
+    VALUES (?, ?, ?, ?)
+  `).bind(reviewId, transaction_id, rating, comment || null).run();
 
   if (!insertResult.success) {
     return c.json({ error: "Failed to add review" }, 500);

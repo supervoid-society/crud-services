@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { authMiddleware } from "../middleware/auth";
 
 interface JWTPayload {
-  userId: number;
+  userId: string;
   username: string;
   role: string;
   exp: number;
@@ -59,11 +59,12 @@ transaction.post("/", authMiddleware, async (c) => {
   }
 
   // Insert transaction
-  const result = await c.env.D1.prepare(
-    "INSERT INTO transactions (buyer_id, seller_id, item_id, quantity, amount, status) VALUES (?, ?, ?, ?, ?, 'pending')"
-  ).bind(buyerId, sellerId, itemId, quantity, amount).run();
+  const transactionId = crypto.randomUUID();
+  await c.env.D1.prepare(
+    "INSERT INTO transactions (id, buyer_id, seller_id, item_id, quantity, amount, status) VALUES (?, ?, ?, ?, ?, ?, 'pending')"
+  ).bind(transactionId, buyerId, sellerId, itemId, quantity, amount).run();
 
-  return c.json({ id: result.meta.last_row_id, message: "Transaction created" });
+  return c.json({ id: transactionId, message: "Transaction created" });
 });
 
 // Update transaction status

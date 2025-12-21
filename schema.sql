@@ -10,7 +10,7 @@ CREATE TABLE catalog_items (
     price REAL NOT NULL,
     qty INTEGER NOT NULL DEFAULT 0,
     image_id TEXT,
-    user_id INTEGER NOT NULL,
+    user_id TEXT NOT NULL,
     created_at TEXT DEFAULT current_timestamp,
     updated_at TEXT DEFAULT current_timestamp
 );
@@ -24,9 +24,9 @@ CREATE TABLE images (
 );
 
 CREATE TABLE transactions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    buyer_id INTEGER NOT NULL,
-    seller_id INTEGER NOT NULL,
+    id TEXT PRIMARY KEY,
+    buyer_id TEXT NOT NULL,
+    seller_id TEXT NOT NULL,
     item_id TEXT NOT NULL,
     quantity INTEGER NOT NULL,
     amount DECIMAL(10,2) NOT NULL,
@@ -37,8 +37,8 @@ CREATE TABLE transactions (
 );
 
 CREATE TABLE cart (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL,
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
     item_id TEXT NOT NULL,
     quantity INTEGER NOT NULL DEFAULT 1,
     created_at TEXT DEFAULT current_timestamp,
@@ -50,8 +50,8 @@ CREATE TABLE cart (
 DROP TABLE IF EXISTS reviews;
 
 CREATE TABLE reviews (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    transaction_id INTEGER NOT NULL,
+    id TEXT PRIMARY KEY,
+    transaction_id TEXT NOT NULL,
     rating INTEGER NOT NULL CHECK (rating >= 1 AND rating <= 5),
     comment TEXT,
     reply TEXT,

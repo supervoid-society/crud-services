@@ -9,7 +9,7 @@ type Bindings = {
 };
 
 interface JWTPayload {
-  userId: number;
+  userId: string;
   username: string;
   role: string;
   exp: number;
@@ -22,13 +22,13 @@ interface CatalogItem {
   price: number;
   qty: number;
   image_id: string | null;
-  user_id: number;
+  user_id: string;
   created_at?: string;
   updated_at?: string;
 }
 
 interface CartItem {
-  user_id: number;
+  user_id: string;
   item_id: string;
   quantity: number;
   created_at: string;
@@ -39,14 +39,14 @@ interface CartItemWithDetails extends CartItem {
   name: string;
   price: number;
   image_id: string | null;
-  seller_id: number;
+  seller_id: string;
 }
 
 interface CartItemWithStock extends CartItem {
   name: string;
   price: number;
   available_qty: number;
-  seller_id: number;
+  seller_id: string;
 }
 
 interface BalanceResponse {
@@ -200,8 +200,9 @@ catalog.post("/cart", async (c) => {
       .bind(newQuantity, userId, itemId).run();
   } else {
     // Add new item to cart
-    await c.env.D1.prepare("INSERT INTO cart (user_id, item_id, quantity) VALUES (?, ?, ?)")
-      .bind(userId, itemId, quantity).run();
+    const cartId = crypto.randomUUID();
+    await c.env.D1.prepare("INSERT INTO cart (id, user_id, item_id, quantity) VALUES (?, ?, ?, ?)")
+      .bind(cartId, userId, itemId, quantity).run();
   }
 
   return c.json({ message: "Item added to cart" });
@@ -477,9 +478,10 @@ catalog.post("/checkout", async (c) => {
 
     // Create transaction
     try {
+      const transactionId = crypto.randomUUID();
       await c.env.D1.prepare(
-        "INSERT INTO transactions (buyer_id, seller_id, item_id, quantity, amount, status) VALUES (?, ?, ?, ?, ?, 'completed')"
-      ).bind(buyerId, sellerId, item.item_id, item.quantity, amount).run();
+        "INSERT INTO transactions (id, buyer_id, seller_id, item_id, quantity, amount, status) VALUES (?, ?, ?, ?, ?, ?, 'completed')"
+      ).bind(transactionId, buyerId, sellerId, item.item_id, item.quantity, amount).run();
     } catch {
       return c.json({ error: "Transaction creation failed" }, 500);
     }

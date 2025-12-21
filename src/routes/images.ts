@@ -13,7 +13,7 @@ images.get("/:id", async (c) => {
   if (!image) {
     return c.json({ error: "Image not found" }, 404);
   }
-  const { data, content_type } = image as { data: any; content_type: string };
+  const { data, content_type } = image as { data: Uint8Array; content_type: string };
   let binaryData: Uint8Array;
   if (typeof data === 'string') {
     // Assume base64
