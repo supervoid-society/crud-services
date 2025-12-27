@@ -10,7 +10,8 @@
 		{
 			"binding": "D1",
 			"database_name": "crud-services",
-			"database_id": "5b9f5c07-ecfc-49cf-b6ae-259f8b5b2bde"
+			"database_id": "5b9f5c07-ecfc-49cf-b6ae-259f8b5b2bde",
+			"remote": true
 		}
 	]
 }
