@@ -14,14 +14,14 @@ interface JWTPayload {
 }
 
 interface Review {
-  id: number;
-  transaction_id: number;
+  id: string;
+  transaction_id: string;
   rating: number;
   comment: string | null;
   reply: string | null;
   created_at: string;
   updated_at: string;
-  buyer_id: number;
+  buyer_id: string;
   buyer_username?: string;
 }
 
@@ -46,14 +46,14 @@ reviews.get("/:item_id", async (c) => {
   }
 
   const reviewsData: Review[] = reviewsResult.results.map((row: Record<string, unknown>) => ({
-    id: Number(row.id),
-    transaction_id: Number(row.transaction_id),
+    id: row.id as string,
+    transaction_id: row.transaction_id as string,
     rating: Number(row.rating),
     comment: row.comment as string | null,
     reply: row.reply as string | null,
     created_at: row.created_at as string,
     updated_at: row.updated_at as string,
-    buyer_id: Number(row.buyer_id),
+    buyer_id: row.buyer_id as string,
   }));
 
   return c.json(reviewsData);

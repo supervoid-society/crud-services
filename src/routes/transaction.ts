@@ -121,12 +121,17 @@ transaction.post("/checkout", authMiddleware, async (c) => {
   const catalogItemId = cartItem.item_id;
   const actualQuantity = cartItem.cartQuantity; // Use quantity from cart, ignore frontend
 
-  // Get item details
-  const item = await c.env.D1.prepare("SELECT price, user_id as sellerId FROM catalog_items WHERE id = ?").bind(catalogItemId).first() as { price: number; sellerId: string } | undefined;
+  // Get item details including current stock
+  const item = await c.env.D1.prepare("SELECT price, qty, user_id as sellerId FROM catalog_items WHERE id = ?").bind(catalogItemId).first() as { price: number; qty: number; sellerId: string } | undefined;
   console.log("Item found:", item);
 
   if (!item) {
     return c.json({ error: "Catalog item not found" }, 404);
+  }
+
+  // Check stock availability
+  if (item.qty < actualQuantity) {
+    return c.json({ error: `Insufficient stock. Available: ${item.qty}, requested: ${actualQuantity}` }, 400);
   }
 
   const amount = item.price * actualQuantity;
@@ -138,8 +143,16 @@ transaction.post("/checkout", authMiddleware, async (c) => {
   // Create transaction
   const transactionId = crypto.randomUUID();
   await c.env.D1.prepare(
-    "INSERT INTO transactions (id, buyer_id, seller_id, item_id, quantity, amount, status) VALUES (?, ?, ?, ?, ?, ?, 'pending')"
+    "INSERT INTO transactions (id, buyer_id, seller_id, item_id, quantity, amount, status) VALUES (?, ?, ?, ?, ?, ?, 'completed')"
   ).bind(transactionId, buyerId, item.sellerId, catalogItemId, actualQuantity, amount).run();
+
+  // Reduce stock
+  const newQty = item.qty - actualQuantity;
+  await c.env.D1.prepare("UPDATE catalog_items SET qty = ?, updated_at = current_timestamp WHERE id = ?")
+    .bind(newQty, catalogItemId).run();
+
+  // Remove item from cart
+  await c.env.D1.prepare("DELETE FROM cart WHERE id = ? AND user_id = ?").bind(itemId, buyerId).run();
 
   // Create signature for transfer
   const transferData = { transactionId, sellerId: item.sellerId, amount, buyerId };
