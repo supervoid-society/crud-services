@@ -3,9 +3,6 @@
 	"name": "crud-services",
 	"main": "src/index.ts",
 	"compatibility_date": "2025-12-14",
-	"vars": {
-		"JWT_SECRET": "your-secret-key-here",
-	},
 	"d1_databases": [
 		{
 			"binding": "D1",
