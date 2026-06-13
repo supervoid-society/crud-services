@@ -25,6 +25,7 @@ CREATE TABLE catalog_items (
     qty INTEGER NOT NULL DEFAULT 0,
     image_id TEXT,
     user_id TEXT NOT NULL,
+    is_archived INTEGER DEFAULT 0,
     created_at TEXT DEFAULT current_timestamp,
     updated_at TEXT DEFAULT current_timestamp
 );
@@ -101,14 +102,14 @@ CREATE TABLE reviews (
     }, env);
 
     expect(res.status).toBe(200);
-    const data = await res.json();
+    const data: any = await res.json();
     expect(data.id).toBeDefined();
   });
 
   it("should list catalog items", async () => {
     const res = await app.request("/catalog-items", {}, env);
     expect(res.status).toBe(200);
-    const data = await res.json();
+    const data: any = await res.json();
     expect(Array.isArray(data)).toBe(true);
     expect(data.length).toBeGreaterThan(0);
   });
@@ -120,7 +121,7 @@ CREATE TABLE reviews (
 
     const res = await app.request(`/catalog-items/${itemId}`, {}, env);
     expect(res.status).toBe(200);
-    const data = await res.json();
+    const data: any = await res.json();
     expect(data.id).toBe(itemId);
   });
 
@@ -143,7 +144,7 @@ CREATE TABLE reviews (
     }, env);
 
     expect(res.status).toBe(200);
-    const data = await res.json();
+    const data: any = await res.json();
     expect(data.name).toBe("Updated Item");
   });
 
@@ -167,7 +168,7 @@ CREATE TABLE reviews (
     }, env);
 
     expect(res.status).toBe(200);
-    const data = await res.json();
+    const data: any = await res.json();
     expect(data.message).toBe("Item added to cart");
   });
 
@@ -181,15 +182,28 @@ CREATE TABLE reviews (
     }, env);
 
     expect(res.status).toBe(200);
-    const data = await res.json();
+    const data: any = await res.json();
     expect(Array.isArray(data)).toBe(true);
     expect(data.length).toBeGreaterThan(0);
   });
 
-  it("should delete a catalog item", async () => {
-    const itemsRes = await app.request("/catalog-items", {}, env);
-    const items = await itemsRes.json() as any[];
-    const itemId = items[0].id;
+  it("should archive a catalog item (soft delete)", async () => {
+    // First create a new item to archive
+    const createRes = await app.request("/catalog-items", {
+      method: "POST",
+      body: JSON.stringify({
+        name: "Archive Me",
+        price: 50,
+        qty: 1,
+        user_id: "seller-1"
+      }),
+      headers: { 
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`
+      }
+    }, env);
+    const item = await createRes.json() as any;
+    const itemId = item.id;
 
     const res = await app.request(`/catalog-items/${itemId}`, {
       method: "DELETE",
@@ -199,7 +213,32 @@ CREATE TABLE reviews (
     }, env);
 
     expect(res.status).toBe(200);
-    const data = await res.json();
-    expect(data.message).toBe("Item deleted");
+    const data: any = await res.json();
+    expect(data.message).toBe("Item archived");
+
+    // Verify it's archived in DB
+    const dbItem: any = await env.D1.prepare("SELECT is_archived FROM catalog_items WHERE id = ?").bind(itemId).first();
+    expect(dbItem.is_archived).toBe(1);
+  });
+
+  it("should restore an archived catalog item", async () => {
+    // Find an archived item
+    const dbItem: any = await env.D1.prepare("SELECT id FROM catalog_items WHERE is_archived = 1 LIMIT 1").first();
+    const itemId = dbItem.id;
+
+    const res = await app.request(`/catalog-items/${itemId}/restore`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${token}`
+      }
+    }, env);
+
+    expect(res.status).toBe(200);
+    const data: any = await res.json();
+    expect(data.message).toBe("Item restored");
+
+    // Verify it's no longer archived
+    const restoredItem: any = await env.D1.prepare("SELECT is_archived FROM catalog_items WHERE id = ?").bind(itemId).first();
+    expect(restoredItem.is_archived).toBe(0);
   });
 });

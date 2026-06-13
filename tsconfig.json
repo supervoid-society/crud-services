@@ -9,6 +9,10 @@
       "ESNext"
     ],
     "jsx": "react-jsx",
-    "jsxImportSource": "hono/jsx"
-  },
+    "jsxImportSource": "hono/jsx",
+    "types": [
+      "@cloudflare/vitest-pool-workers",
+      "vitest/globals"
+    ]
+  }
 }

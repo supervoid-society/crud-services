@@ -23,6 +23,7 @@ interface CatalogItem {
   qty: number;
   image_id: string | null;
   user_id: string;
+  is_archived: number;
   created_at?: string;
   updated_at?: string;
 }
@@ -96,7 +97,7 @@ catalog.get("/", async (c) => {
     try {
       const decoded = await verify(token, c.env.JWT_SECRET);
       if (!decoded || !decoded.payload) {
-        items = await c.env.D1.prepare("SELECT * FROM catalog_items").all();
+        items = await c.env.D1.prepare("SELECT * FROM catalog_items WHERE is_archived = 0").all();
       } else {
         const payload = decoded.payload as JWTPayload;
         const role = payload.role;
@@ -106,14 +107,14 @@ catalog.get("/", async (c) => {
         } else if (role === 'seller') {
           items = await c.env.D1.prepare("SELECT * FROM catalog_items WHERE user_id = ?").bind(userId).all();
         } else {
-          items = await c.env.D1.prepare("SELECT * FROM catalog_items").all();
+          items = await c.env.D1.prepare("SELECT * FROM catalog_items WHERE is_archived = 0").all();
         }
       }
     } catch {
-      items = await c.env.D1.prepare("SELECT * FROM catalog_items").all();
+      items = await c.env.D1.prepare("SELECT * FROM catalog_items WHERE is_archived = 0").all();
     }
   } else {
-    items = await c.env.D1.prepare("SELECT * FROM catalog_items").all();
+    items = await c.env.D1.prepare("SELECT * FROM catalog_items WHERE is_archived = 0").all();
   }
   return c.json(items.results);
 });
@@ -305,31 +306,54 @@ catalog.delete("/:id", authMiddleware, async (c) => {
   const role = payload.role;
 
   if (role !== 'seller' && role !== 'admin') {
-    return c.json({ error: "Only sellers and admins can delete catalog items" }, 403);
+    return c.json({ error: "Only sellers and admins can archive catalog items" }, 403);
   }
 
-  // For sellers, check if they own the item
-  let existingItem;
-  if (role === 'seller') {
-    existingItem = await c.env.D1.prepare("SELECT * FROM catalog_items WHERE id = ? AND user_id = ?").bind(id, userId).first() as CatalogItem | undefined;
-    if (!existingItem) {
-      return c.json({ error: "Item not found or unauthorized" }, 404);
-    }
-  } else {
-    // For admins, just check if item exists
-    existingItem = await c.env.D1.prepare("SELECT * FROM catalog_items WHERE id = ?").bind(id).first() as CatalogItem | undefined;
-    if (!existingItem) {
-      return c.json({ error: "Item not found" }, 404);
-    }
+  // Check ownership/existence
+  const query = role === 'seller' 
+    ? "SELECT * FROM catalog_items WHERE id = ? AND user_id = ?" 
+    : "SELECT * FROM catalog_items WHERE id = ?";
+  const params = role === 'seller' ? [id, userId] : [id];
+  
+  const existingItem = await c.env.D1.prepare(query).bind(...params).first() as CatalogItem | undefined;
+  
+  if (!existingItem) {
+    return c.json({ error: "Item not found or unauthorized" }, 404);
   }
 
-  if (existingItem.image_id) {
-    await c.env.D1.prepare("DELETE FROM images WHERE id = ?").bind(existingItem.image_id).run();
+  // Soft delete: set is_archived to 1
+  await c.env.D1.prepare("UPDATE catalog_items SET is_archived = 1, updated_at = current_timestamp WHERE id = ?")
+    .bind(id).run();
+
+  return c.json({ message: "Item archived" });
+});
+
+catalog.post("/:id/restore", authMiddleware, async (c) => {
+  const id = c.req.param("id");
+  const payload = c.get("jwtPayload");
+  const userId = payload.userId;
+  const role = payload.role;
+
+  if (role !== 'seller' && role !== 'admin') {
+    return c.json({ error: "Only sellers and admins can restore catalog items" }, 403);
   }
 
-  await c.env.D1.prepare("DELETE FROM catalog_items WHERE id = ?").bind(id).run();
+  const query = role === 'seller' 
+    ? "SELECT * FROM catalog_items WHERE id = ? AND user_id = ?" 
+    : "SELECT * FROM catalog_items WHERE id = ?";
+  const params = role === 'seller' ? [id, userId] : [id];
+  
+  const existingItem = await c.env.D1.prepare(query).bind(...params).first() as CatalogItem | undefined;
+  
+  if (!existingItem) {
+    return c.json({ error: "Item not found or unauthorized" }, 404);
+  }
 
-  return c.json({ message: "Item deleted" });
+  // Restore: set is_archived to 0
+  await c.env.D1.prepare("UPDATE catalog_items SET is_archived = 0, updated_at = current_timestamp WHERE id = ?")
+    .bind(id).run();
+
+  return c.json({ message: "Item restored" });
 });
 
 catalog.post("/checkout", authMiddleware, async (c) => {
@@ -343,7 +367,7 @@ catalog.post("/checkout", authMiddleware, async (c) => {
 
   // Get cart items from database
   const cartItems = await c.env.D1.prepare(`
-    SELECT c.*, ci.name, ci.price, ci.qty as available_qty, ci.user_id as seller_id
+    SELECT c.*, ci.name, ci.price, ci.qty as available_qty, ci.user_id as seller_id, ci.is_archived
     FROM cart c
     JOIN catalog_items ci ON c.item_id = ci.id
     WHERE c.user_id = ?
@@ -354,10 +378,13 @@ catalog.post("/checkout", authMiddleware, async (c) => {
     return c.json({ error: "Cart is empty" }, 400);
   }
 
-  // Check stock
+  // Check stock and archive status
   const stockChecks: { item: CartItemWithStock; existingItem: CartItemWithStock }[] = [];
   
-  for (const cartItem of cartItems.results as unknown as CartItemWithStock[]) {
+  for (const cartItem of cartItems.results as unknown as (CartItemWithStock & { is_archived: number })[]) {
+    if (cartItem.is_archived === 1) {
+      return c.json({ error: `Item ${cartItem.name} is no longer available (archived)` }, 400);
+    }
     const currentQty = cartItem.available_qty || 0;
     if (currentQty < cartItem.quantity) {
       return c.json({ error: `Insufficient stock for ${cartItem.name}. Available: ${currentQty}, requested: ${cartItem.quantity}` }, 400);

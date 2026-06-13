@@ -11,6 +11,7 @@ CREATE TABLE catalog_items (
     qty INTEGER NOT NULL DEFAULT 0,
     image_id TEXT,
     user_id TEXT NOT NULL,
+    is_archived INTEGER DEFAULT 0,
     created_at TEXT DEFAULT current_timestamp,
     updated_at TEXT DEFAULT current_timestamp
 );

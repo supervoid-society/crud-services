@@ -21,7 +21,7 @@ DROP TABLE IF EXISTS transactions;
 DROP TABLE IF EXISTS cart;
 DROP TABLE IF EXISTS reviews;
 
-CREATE TABLE catalog_items (id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT, price REAL NOT NULL, qty INTEGER NOT NULL DEFAULT 0, image_id TEXT, user_id TEXT NOT NULL, created_at TEXT DEFAULT current_timestamp, updated_at TEXT DEFAULT current_timestamp);
+CREATE TABLE catalog_items (id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT, price REAL NOT NULL, qty INTEGER NOT NULL DEFAULT 0, image_id TEXT, user_id TEXT NOT NULL, is_archived INTEGER DEFAULT 0, created_at TEXT DEFAULT current_timestamp, updated_at TEXT DEFAULT current_timestamp);
 CREATE TABLE images (id TEXT PRIMARY KEY, data BLOB NOT NULL, content_type TEXT NOT NULL DEFAULT 'image/jpeg', created_at TEXT DEFAULT current_timestamp, updated_at TEXT DEFAULT current_timestamp);
 CREATE TABLE transactions (id TEXT PRIMARY KEY, buyer_id TEXT NOT NULL, seller_id TEXT NOT NULL, item_id TEXT NOT NULL, quantity INTEGER NOT NULL, amount DECIMAL(10,2) NOT NULL, status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'completed', 'failed')), created_at TEXT DEFAULT current_timestamp, updated_at TEXT DEFAULT current_timestamp, FOREIGN KEY (item_id) REFERENCES catalog_items(id) ON DELETE CASCADE);
 CREATE TABLE cart (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, item_id TEXT NOT NULL, quantity INTEGER NOT NULL DEFAULT 1, created_at TEXT DEFAULT current_timestamp, updated_at TEXT DEFAULT current_timestamp, FOREIGN KEY (item_id) REFERENCES catalog_items(id) ON DELETE CASCADE, UNIQUE(user_id, item_id));
@@ -45,7 +45,7 @@ CREATE TABLE reviews (id TEXT PRIMARY KEY, transaction_id TEXT NOT NULL, rating 
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${sellerToken}` }
     }, env);
     expect(res.status).toBe(200);
-    const data = await res.json();
+    const data: any = await res.json();
     expect(data.id).toBeDefined();
     itemId = data.id;
   });
@@ -53,7 +53,7 @@ CREATE TABLE reviews (id TEXT PRIMARY KEY, transaction_id TEXT NOT NULL, rating 
   it("2. Buyer views catalog and sees the item", async () => {
     const res = await app.request("/catalog-items", {}, env);
     expect(res.status).toBe(200);
-    const data = await res.json();
+    const data: any = await res.json();
     expect(Array.isArray(data)).toBe(true);
     expect(data.length).toBe(1);
     expect(data[0].id).toBe(itemId);
@@ -73,7 +73,7 @@ CREATE TABLE reviews (id TEXT PRIMARY KEY, transaction_id TEXT NOT NULL, rating 
       headers: { "Authorization": `Bearer ${buyerToken}` }
     }, env);
     expect(res.status).toBe(200);
-    const data = await res.json();
+    const data: any = await res.json();
     expect(data.length).toBe(1);
     expect(data[0].item_id).toBe(itemId);
     expect(data[0].quantity).toBe(2);
@@ -90,7 +90,7 @@ CREATE TABLE reviews (id TEXT PRIMARY KEY, transaction_id TEXT NOT NULL, rating 
     const cartRes = await app.request("/catalog-items/cart", {
       headers: { "Authorization": `Bearer ${buyerToken}` }
     }, env);
-    const cartData = await cartRes.json();
+    const cartData: any = await cartRes.json();
     expect(cartData.length).toBe(0);
 
     // Get the created transaction
@@ -115,7 +115,7 @@ CREATE TABLE reviews (id TEXT PRIMARY KEY, transaction_id TEXT NOT NULL, rating 
 
     // Verify review is visible
     const reviewsRes = await app.request(`/reviews/${itemId}`, {}, env);
-    const reviewsData = await reviewsRes.json();
+    const reviewsData: any = await reviewsRes.json();
     expect(reviewsData.length).toBe(1);
     expect(reviewsData[0].comment).toBe("Excellent integration item!");
     reviewId = reviewsData[0].id;
@@ -132,7 +132,7 @@ CREATE TABLE reviews (id TEXT PRIMARY KEY, transaction_id TEXT NOT NULL, rating 
     expect(res.status).toBe(200);
 
     const reviewsRes = await app.request(`/reviews/${itemId}`, {}, env);
-    const reviewsData = await reviewsRes.json();
+    const reviewsData: any = await reviewsRes.json();
     expect(reviewsData[0].reply).toBe("Thanks for testing!");
   });
 });

@@ -35,9 +35,21 @@ transaction.get("/user", authMiddleware, async (c) => {
 
   let query = "";
   if (role === 'buyer') {
-    query = "SELECT * FROM transactions WHERE buyer_id = ? ORDER BY created_at DESC";
+    query = `
+      SELECT t.*, c.name as item_name, c.image_id as item_image_id 
+      FROM transactions t
+      JOIN catalog_items c ON t.item_id = c.id
+      WHERE t.buyer_id = ? 
+      ORDER BY t.created_at DESC
+    `;
   } else if (role === 'seller') {
-    query = "SELECT * FROM transactions WHERE seller_id = ? ORDER BY created_at DESC";
+    query = `
+      SELECT t.*, c.name as item_name, c.image_id as item_image_id 
+      FROM transactions t
+      JOIN catalog_items c ON t.item_id = c.id
+      WHERE t.seller_id = ? 
+      ORDER BY t.created_at DESC
+    `;
   } else {
     return c.json({ error: "Invalid role" }, 403);
   }
