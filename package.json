@@ -5,18 +5,21 @@
     "dev": "wrangler dev --port 8788",
     "deploy": "wrangler deploy --minify",
     "cf-typegen": "wrangler types --env-interface CloudflareBindings",
-    "lint": "eslint . --ext .ts"
+    "lint": "eslint . --ext .ts",
+    "test": "vitest"
   },
   "dependencies": {
     "@tsndr/cloudflare-worker-jwt": "^3.2.1",
     "hono": "^4.11.0"
   },
   "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.16.15",
     "@eslint/js": "^9.39.2",
     "eslint": "^9.39.2",
     "globals": "^16.5.0",
     "prettier": "3.7.4",
     "typescript-eslint": "^8.50.0",
+    "vitest": "^4.1.8",
     "wrangler": "^4.4.0"
   }
 }

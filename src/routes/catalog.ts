@@ -106,7 +106,6 @@ catalog.get("/", async (c) => {
         } else if (role === 'seller') {
           items = await c.env.D1.prepare("SELECT * FROM catalog_items WHERE user_id = ?").bind(userId).all();
         } else {
-          // buyer or other roles
           items = await c.env.D1.prepare("SELECT * FROM catalog_items").all();
         }
       }
@@ -114,28 +113,17 @@ catalog.get("/", async (c) => {
       items = await c.env.D1.prepare("SELECT * FROM catalog_items").all();
     }
   } else {
-    // public access
     items = await c.env.D1.prepare("SELECT * FROM catalog_items").all();
   }
   return c.json(items.results);
 });
 
 // Cart routes
-catalog.get("/cart", async (c) => {
-  const auth = c.req.header("Authorization");
-  if (!auth || !auth.startsWith("Bearer ")) {
-    return c.json({ error: "Unauthorized" }, 401);
-  }
+catalog.get("/cart", authMiddleware, async (c) => {
+  const payload = c.get("jwtPayload");
+  const userId = payload.userId;
 
-  const token = auth.slice(7);
   try {
-    const decoded = await verify(token, c.env.JWT_SECRET);
-    if (!decoded || !decoded.payload) {
-      return c.json({ error: "Invalid token payload" }, 401);
-    }
-    const payload = decoded.payload as JWTPayload;
-    const userId = payload.userId;
-
     const cartItems = await c.env.D1.prepare(`
       SELECT c.*, ci.name, ci.price, ci.image_id, ci.user_id as seller_id
       FROM cart c
@@ -144,7 +132,6 @@ catalog.get("/cart", async (c) => {
       ORDER BY c.created_at DESC
     `).bind(userId).all();
 
-    console.log(`Cart items for user ${userId}:`, cartItems.results);
     return c.json((cartItems.results as unknown as CartItemWithDetails[]) || []);
   } catch (error) {
     console.log("Error fetching cart:", error);
@@ -152,27 +139,16 @@ catalog.get("/cart", async (c) => {
   }
 });
 
-catalog.post("/cart", async (c) => {
-  const auth = c.req.header("Authorization");
-  if (!auth || !auth.startsWith("Bearer ")) {
-    return c.json({ error: "Unauthorized" }, 401);
+catalog.post("/cart", authMiddleware, async (c) => {
+  const payload = c.get("jwtPayload");
+  const userId = payload.userId;
+  const { itemId, quantity } = await c.req.json();
+
+  if (!itemId || !quantity || quantity < 1) {
+    return c.json({ error: "Invalid itemId or quantity" }, 400);
   }
 
-  const token = auth.slice(7);
   try {
-    const decoded = await verify(token, c.env.JWT_SECRET);
-    if (!decoded || !decoded.payload) {
-      return c.json({ error: "Invalid token payload" }, 401);
-    }
-    const payload = decoded.payload as JWTPayload;
-    const userId = payload.userId;
-    const { itemId, quantity } = await c.req.json();
-
-    if (!itemId || !quantity || quantity < 1) {
-      return c.json({ error: "Invalid itemId or quantity" }, 400);
-    }
-
-    // Check if item exists and has stock
     const item = await c.env.D1.prepare("SELECT * FROM catalog_items WHERE id = ?").bind(itemId).first() as CatalogItem | undefined;
     if (!item) {
       return c.json({ error: "Item not found" }, 404);
@@ -182,54 +158,40 @@ catalog.post("/cart", async (c) => {
       return c.json({ error: "Insufficient stock" }, 400);
     }
 
-  // Check if item already in cart
-  const existingCartItem = await c.env.D1.prepare("SELECT * FROM cart WHERE user_id = ? AND item_id = ?").bind(userId, itemId).first() as CartItem | undefined;
+    const existingCartItem = await c.env.D1.prepare("SELECT * FROM cart WHERE user_id = ? AND item_id = ?").bind(userId, itemId).first() as CartItem | undefined;
 
-  if (existingCartItem) {
-    // Update quantity
-    const newQuantity = existingCartItem.quantity + quantity;
-    if (newQuantity > item.qty) {
-      return c.json({ error: "Total quantity exceeds available stock" }, 400);
+    if (existingCartItem) {
+      const newQuantity = existingCartItem.quantity + quantity;
+      if (newQuantity > item.qty) {
+        return c.json({ error: "Total quantity exceeds available stock" }, 400);
+      }
+
+      await c.env.D1.prepare("UPDATE cart SET quantity = ?, updated_at = current_timestamp WHERE user_id = ? AND item_id = ?")
+        .bind(newQuantity, userId, itemId).run();
+    } else {
+      const cartId = crypto.randomUUID();
+      await c.env.D1.prepare("INSERT INTO cart (id, user_id, item_id, quantity) VALUES (?, ?, ?, ?)")
+        .bind(cartId, userId, itemId, quantity).run();
     }
 
-    await c.env.D1.prepare("UPDATE cart SET quantity = ?, updated_at = current_timestamp WHERE user_id = ? AND item_id = ?")
-      .bind(newQuantity, userId, itemId).run();
-  } else {
-    // Add new item to cart
-    const cartId = crypto.randomUUID();
-    await c.env.D1.prepare("INSERT INTO cart (id, user_id, item_id, quantity) VALUES (?, ?, ?, ?)")
-      .bind(cartId, userId, itemId, quantity).run();
-  }
-
-  return c.json({ message: "Item added to cart" });
+    return c.json({ message: "Item added to cart" });
   } catch (error) {
     console.error("Error adding to cart:", error);
     return c.json({ error: "Failed to add item to cart" }, 500);
   }
 });
 
-catalog.put("/cart/:itemId", async (c) => {
-  const auth = c.req.header("Authorization");
-  if (!auth || !auth.startsWith("Bearer ")) {
-    return c.json({ error: "Unauthorized" }, 401);
+catalog.put("/cart/:itemId", authMiddleware, async (c) => {
+  const payload = c.get("jwtPayload");
+  const userId = payload.userId;
+  const itemId = c.req.param("itemId");
+  const { quantity } = await c.req.json();
+
+  if (!quantity || quantity < 1) {
+    return c.json({ error: "Invalid quantity" }, 400);
   }
 
-  const token = auth.slice(7);
   try {
-    const decoded = await verify(token, c.env.JWT_SECRET);
-    if (!decoded || !decoded.payload) {
-      return c.json({ error: "Invalid token payload" }, 401);
-    }
-    const payload = decoded.payload as JWTPayload;
-    const userId = payload.userId;
-    const itemId = c.req.param("itemId");
-    const { quantity } = await c.req.json();
-
-    if (!quantity || quantity < 1) {
-      return c.json({ error: "Invalid quantity" }, 400);
-    }
-
-    // Check if item exists and has stock
     const item = await c.env.D1.prepare("SELECT * FROM catalog_items WHERE id = ?").bind(itemId).first() as CatalogItem | undefined;
     if (!item) {
       return c.json({ error: "Item not found" }, 404);
@@ -239,7 +201,6 @@ catalog.put("/cart/:itemId", async (c) => {
       return c.json({ error: "Insufficient stock" }, 400);
     }
 
-    // Update cart item
     const result = await c.env.D1.prepare("UPDATE cart SET quantity = ?, updated_at = current_timestamp WHERE user_id = ? AND item_id = ?")
       .bind(quantity, userId, itemId).run();
 
@@ -247,29 +208,19 @@ catalog.put("/cart/:itemId", async (c) => {
       return c.json({ error: "Item not in cart" }, 404);
     }
 
-  return c.json({ message: "Cart updated" });
+    return c.json({ message: "Cart updated" });
   } catch (error) {
     console.error("Error updating cart:", error);
     return c.json({ error: "Failed to update cart" }, 500);
   }
 });
 
-catalog.delete("/cart/:itemId", async (c) => {
-  const auth = c.req.header("Authorization");
-  if (!auth || !auth.startsWith("Bearer ")) {
-    return c.json({ error: "Unauthorized" }, 401);
-  }
+catalog.delete("/cart/:itemId", authMiddleware, async (c) => {
+  const payload = c.get("jwtPayload");
+  const userId = payload.userId;
+  const itemId = c.req.param("itemId");
 
-  const token = auth.slice(7);
   try {
-    const decoded = await verify(token, c.env.JWT_SECRET);
-    if (!decoded || !decoded.payload) {
-      return c.json({ error: "Invalid token payload" }, 401);
-    }
-    const payload = decoded.payload as JWTPayload;
-    const userId = payload.userId;
-    const itemId = c.req.param("itemId");
-
     const result = await c.env.D1.prepare("DELETE FROM cart WHERE user_id = ? AND item_id = ?")
       .bind(userId, itemId).run();
 
@@ -284,29 +235,19 @@ catalog.delete("/cart/:itemId", async (c) => {
   }
 });
 
-catalog.delete("/cart", async (c) => {
-  const auth = c.req.header("Authorization");
-  if (!auth || !auth.startsWith("Bearer ")) {
-    return c.json({ error: "Unauthorized" }, 401);
-  }
+catalog.delete("/cart", authMiddleware, async (c) => {
+  const payload = c.get("jwtPayload");
+  const userId = payload.userId;
 
-  const token = auth.slice(7);
   try {
-    const decoded = await verify(token, c.env.JWT_SECRET);
-    if (!decoded || !decoded.payload) {
-      return c.json({ error: "Invalid token payload" }, 401);
-    }
-    const payload = decoded.payload as JWTPayload;
-    const userId = payload.userId;
-
     await c.env.D1.prepare("DELETE FROM cart WHERE user_id = ?").bind(userId).run();
-
     return c.json({ message: "Cart cleared" });
   } catch (error) {
     console.error("Error clearing cart:", error);
     return c.json({ error: "Failed to clear cart" }, 500);
   }
 });
+
 
 catalog.get("/:id", async (c) => {
   const id = c.req.param("id");
@@ -345,7 +286,14 @@ catalog.put("/:id", authMiddleware, async (c) => {
   }
 
   await c.env.D1.prepare("UPDATE catalog_items SET name = ?, description = ?, price = ?, qty = ?, image_id = ?, updated_at = current_timestamp WHERE id = ?")
-    .bind(name, description, price, qty, imageId, id).run();
+    .bind(
+      name ?? existingItem.name,
+      description ?? existingItem.description,
+      price ?? existingItem.price,
+      qty ?? existingItem.qty,
+      imageId,
+      id
+    ).run();
 
   return c.json({ id, name, description, price, qty, image_id: imageId });
 });
@@ -384,26 +332,8 @@ catalog.delete("/:id", authMiddleware, async (c) => {
   return c.json({ message: "Item deleted" });
 });
 
-catalog.post("/checkout", async (c) => {
-  // Get auth token from header
-  const authHeader = c.req.header("Authorization");
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return c.json({ error: "Authorization required" }, 401);
-  }
-  const token = authHeader.slice(7);
-
-  // Decode token to get user info
-  const { verify } = await import("@tsndr/cloudflare-worker-jwt");
-  let payload: JWTPayload;
-  try {
-    const decoded = await verify(token, c.env.JWT_SECRET);
-    if (!decoded || !decoded.payload) {
-      return c.json({ error: "Invalid token" }, 401);
-    }
-    payload = decoded.payload as JWTPayload;
-  } catch {
-    return c.json({ error: "Invalid token" }, 401);
-  }
+catalog.post("/checkout", authMiddleware, async (c) => {
+  const payload = c.get("jwtPayload");
 
   if (payload.role !== 'buyer') {
     return c.json({ error: "Only buyers can checkout" }, 403);
