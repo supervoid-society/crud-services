@@ -19,7 +19,7 @@ type Bindings = {
 
 const app = new Hono<{ Bindings: Bindings; Variables: { jwtPayload: JWTPayload } }>();
 
-app.use('*', cors({ origin: '*' }));
+app.use("*", cors({ origin: "*" }));
 
 app.get("/", (c) => {
   return c.text("Hello Hono!");

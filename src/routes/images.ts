@@ -15,21 +15,21 @@ images.get("/:id", async (c) => {
   }
   const { data, content_type } = image as { data: any; content_type: string };
   let binaryData: Uint8Array;
-  
-  if (typeof data === 'string') {
+
+  if (typeof data === "string") {
     // Assume base64
     try {
-      binaryData = Uint8Array.from(atob(data), c => c.charCodeAt(0));
+      binaryData = Uint8Array.from(atob(data), (c) => c.charCodeAt(0));
     } catch (e) {
       console.error("Invalid base64 data:", e);
       return new Response("Invalid image data", { status: 500 });
     }
   } else if (data instanceof Uint8Array) {
     binaryData = data;
-  } else if (data && typeof data === 'object') {
+  } else if (data && typeof data === "object") {
     // Universal conversion for object-like binary data
     const values = Object.values(data);
-    if (values.every(v => typeof v === 'number')) {
+    if (values.every((v) => typeof v === "number")) {
       binaryData = new Uint8Array(values as number[]);
     } else {
       console.error("Object data is not numeric:", typeof data);
@@ -39,8 +39,8 @@ images.get("/:id", async (c) => {
     console.error("Unsupported data type:", typeof data);
     return new Response("Unsupported image data type", { status: 500 });
   }
-  
-  return new Response(binaryData, { headers: { 'Content-Type': content_type } });
+
+  return new Response(binaryData, { headers: { "Content-Type": content_type } });
 });
 
 export default images;

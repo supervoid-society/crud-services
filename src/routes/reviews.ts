@@ -67,7 +67,7 @@ reviews.post("/", authMiddleware, async (c) => {
   const userId = payload?.userId;
   const role = payload?.role;
 
-  if (role !== 'buyer') {
+  if (role !== "buyer") {
     return c.json({ error: "Only buyers can add reviews" }, 403);
   }
 
@@ -96,10 +96,14 @@ reviews.post("/", authMiddleware, async (c) => {
 
   // Insert review
   const reviewId = crypto.randomUUID();
-  const insertResult = await c.env.D1.prepare(`
+  const insertResult = await c.env.D1.prepare(
+    `
     INSERT INTO reviews (id, transaction_id, rating, comment)
     VALUES (?, ?, ?, ?)
-  `).bind(reviewId, transaction_id, rating, comment || null).run();
+  `
+  )
+    .bind(reviewId, transaction_id, rating, comment || null)
+    .run();
 
   if (!insertResult.success) {
     return c.json({ error: "Failed to add review" }, 500);
@@ -117,7 +121,7 @@ reviews.put("/:id", authMiddleware, async (c) => {
   const userId = payload?.userId;
   const role = payload?.role;
 
-  if (role !== 'buyer') {
+  if (role !== "buyer") {
     return c.json({ error: "Only buyers can update reviews" }, 403);
   }
 
@@ -156,9 +160,13 @@ reviews.put("/:id", authMiddleware, async (c) => {
   updateFields.push("updated_at = current_timestamp");
   values.push(reviewId);
 
-  const updateResult = await c.env.D1.prepare(`
+  const updateResult = await c.env.D1.prepare(
+    `
     UPDATE reviews SET ${updateFields.join(", ")} WHERE id = ?
-  `).bind(...values).run();
+  `
+  )
+    .bind(...values)
+    .run();
 
   if (!updateResult.success) {
     return c.json({ error: "Failed to update review" }, 500);
@@ -176,7 +184,7 @@ reviews.put("/:id/reply", authMiddleware, async (c) => {
   const userId = payload?.userId;
   const role = payload?.role;
 
-  if (role !== 'seller') {
+  if (role !== "seller") {
     return c.json({ error: "Only sellers can reply to reviews" }, 403);
   }
 
@@ -199,9 +207,13 @@ reviews.put("/:id/reply", authMiddleware, async (c) => {
   }
 
   // Update reply (can be null to remove reply, or new reply text)
-  const updateResult = await c.env.D1.prepare(`
+  const updateResult = await c.env.D1.prepare(
+    `
     UPDATE reviews SET reply = ?, updated_at = current_timestamp WHERE id = ?
-  `).bind(reply || null, reviewId).run();
+  `
+  )
+    .bind(reply || null, reviewId)
+    .run();
 
   if (!updateResult.success) {
     return c.json({ error: "Failed to update reply" }, 500);

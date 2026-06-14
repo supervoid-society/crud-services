@@ -19,7 +19,7 @@ const transaction = new Hono<{ Bindings: Bindings; Variables: { jwtPayload: JWTP
 // Get all transactions (for admin)
 transaction.get("/", authMiddleware, async (c) => {
   const payload = c.get("jwtPayload");
-  if (payload.role !== 'admin') {
+  if (payload.role !== "admin") {
     return c.json({ error: "Admin only" }, 403);
   }
 
@@ -34,7 +34,7 @@ transaction.get("/user", authMiddleware, async (c) => {
   const role = payload.role;
 
   let query = "";
-  if (role === 'buyer') {
+  if (role === "buyer") {
     query = `
       SELECT t.*, c.name as item_name, c.image_id as item_image_id 
       FROM transactions t
@@ -42,7 +42,7 @@ transaction.get("/user", authMiddleware, async (c) => {
       WHERE t.buyer_id = ? 
       ORDER BY t.created_at DESC
     `;
-  } else if (role === 'seller') {
+  } else if (role === "seller") {
     query = `
       SELECT t.*, c.name as item_name, c.image_id as item_image_id 
       FROM transactions t
@@ -63,7 +63,7 @@ transaction.post("/", authMiddleware, async (c) => {
   const { buyerId, sellerId, itemId, quantity, amount } = await c.req.json();
   const payload = c.get("jwtPayload");
 
-  if (payload.role !== 'buyer') {
+  if (payload.role !== "buyer") {
     return c.json({ error: "Only buyers can create transactions" }, 403);
   }
 
@@ -73,9 +73,9 @@ transaction.post("/", authMiddleware, async (c) => {
 
   // Insert transaction
   const transactionId = crypto.randomUUID();
-  await c.env.D1.prepare(
-    "INSERT INTO transactions (id, buyer_id, seller_id, item_id, quantity, amount, status) VALUES (?, ?, ?, ?, ?, ?, 'pending')"
-  ).bind(transactionId, buyerId, sellerId, itemId, quantity, amount).run();
+  await c.env.D1.prepare("INSERT INTO transactions (id, buyer_id, seller_id, item_id, quantity, amount, status) VALUES (?, ?, ?, ?, ?, ?, 'pending')")
+    .bind(transactionId, buyerId, sellerId, itemId, quantity, amount)
+    .run();
 
   return c.json({ id: transactionId, message: "Transaction created" });
 });
@@ -86,7 +86,7 @@ transaction.put("/:id", authMiddleware, async (c) => {
   const { status } = await c.req.json();
   const payload = c.get("jwtPayload");
 
-  if (payload.role !== 'admin') {
+  if (payload.role !== "admin") {
     return c.json({ error: "Admin only" }, 403);
   }
 
@@ -101,7 +101,7 @@ transaction.post("/checkout", authMiddleware, async (c) => {
 
   const payload = c.get("jwtPayload");
 
-  if (payload.role !== 'buyer') {
+  if (payload.role !== "buyer") {
     return c.json({ error: "Only buyers can checkout" }, 403);
   }
 
@@ -114,10 +114,8 @@ transaction.post("/checkout", authMiddleware, async (c) => {
       return c.json({ error: "Invalid signature" }, 400);
     }
     const sigPayload = decoded.payload as any;
-    if (!sigPayload ||
-        sigPayload.balance !== balance ||
-        sigPayload.userId !== buyerId ||
-        (Date.now() - sigPayload.timestamp) > 300000) { // 5 minutes expiry
+    if (!sigPayload || sigPayload.balance !== balance || sigPayload.userId !== buyerId || Date.now() - sigPayload.timestamp > 300000) {
+      // 5 minutes expiry
       return c.json({ error: "Invalid signature or expired" }, 400);
     }
   } catch (error) {
@@ -125,7 +123,9 @@ transaction.post("/checkout", authMiddleware, async (c) => {
   }
 
   // Get cart item to get catalog item_id
-  const cartItem = await c.env.D1.prepare("SELECT item_id, quantity as cartQuantity FROM cart WHERE id = ? AND user_id = ?").bind(itemId, buyerId).first() as { item_id: string; cartQuantity: number } | undefined;
+  const cartItem = (await c.env.D1.prepare("SELECT item_id, quantity as cartQuantity FROM cart WHERE id = ? AND user_id = ?").bind(itemId, buyerId).first()) as
+    | { item_id: string; cartQuantity: number }
+    | undefined;
   if (!cartItem) {
     return c.json({ error: "Cart item not found" }, 404);
   }
@@ -134,7 +134,9 @@ transaction.post("/checkout", authMiddleware, async (c) => {
   const actualQuantity = cartItem.cartQuantity; // Use quantity from cart, ignore frontend
 
   // Get item details including current stock
-  const item = await c.env.D1.prepare("SELECT price, qty, user_id as sellerId FROM catalog_items WHERE id = ?").bind(catalogItemId).first() as { price: number; qty: number; sellerId: string } | undefined;
+  const item = (await c.env.D1.prepare("SELECT price, qty, user_id as sellerId FROM catalog_items WHERE id = ?").bind(catalogItemId).first()) as
+    | { price: number; qty: number; sellerId: string }
+    | undefined;
   console.log("Item found:", item);
 
   if (!item) {
@@ -154,14 +156,13 @@ transaction.post("/checkout", authMiddleware, async (c) => {
 
   // Create transaction
   const transactionId = crypto.randomUUID();
-  await c.env.D1.prepare(
-    "INSERT INTO transactions (id, buyer_id, seller_id, item_id, quantity, amount, status) VALUES (?, ?, ?, ?, ?, ?, 'completed')"
-  ).bind(transactionId, buyerId, item.sellerId, catalogItemId, actualQuantity, amount).run();
+  await c.env.D1.prepare("INSERT INTO transactions (id, buyer_id, seller_id, item_id, quantity, amount, status) VALUES (?, ?, ?, ?, ?, ?, 'completed')")
+    .bind(transactionId, buyerId, item.sellerId, catalogItemId, actualQuantity, amount)
+    .run();
 
   // Reduce stock
   const newQty = item.qty - actualQuantity;
-  await c.env.D1.prepare("UPDATE catalog_items SET qty = ?, updated_at = current_timestamp WHERE id = ?")
-    .bind(newQty, catalogItemId).run();
+  await c.env.D1.prepare("UPDATE catalog_items SET qty = ?, updated_at = current_timestamp WHERE id = ?").bind(newQty, catalogItemId).run();
 
   // Remove item from cart
   await c.env.D1.prepare("DELETE FROM cart WHERE id = ? AND user_id = ?").bind(itemId, buyerId).run();
