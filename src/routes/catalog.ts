@@ -24,6 +24,7 @@ interface CatalogItem {
   image_id: string | null;
   user_id: string;
   is_archived: number;
+  is_banned: number;
   created_at?: string;
   updated_at?: string;
 }
@@ -108,14 +109,14 @@ catalog.get("/", async (c) => {
         } else if (role === "seller") {
           items = await c.env.D1.prepare("SELECT * FROM catalog_items WHERE user_id = ?").bind(userId).all();
         } else {
-          items = await c.env.D1.prepare("SELECT * FROM catalog_items WHERE is_archived = 0").all();
+          items = await c.env.D1.prepare("SELECT * FROM catalog_items WHERE is_archived = 0 AND is_banned = 0").all();
         }
       }
     } catch {
-      items = await c.env.D1.prepare("SELECT * FROM catalog_items WHERE is_archived = 0").all();
+      items = await c.env.D1.prepare("SELECT * FROM catalog_items WHERE is_archived = 0 AND is_banned = 0").all();
     }
   } else {
-    items = await c.env.D1.prepare("SELECT * FROM catalog_items WHERE is_archived = 0").all();
+    items = await c.env.D1.prepare("SELECT * FROM catalog_items WHERE is_archived = 0 AND is_banned = 0").all();
   }
   return c.json(items.results);
 });
@@ -279,6 +280,10 @@ catalog.put("/:id", authMiddleware, async (c) => {
     return c.json({ error: "Item not found or unauthorized" }, 404);
   }
 
+  if (existingItem.is_banned === 1) {
+    return c.json({ error: "Barang dibanned oleh admin dan tidak dapat diubah." }, 403);
+  }
+
   let imageId = existingItem.image_id;
   if (image_base64) {
     if (imageId) {
@@ -319,10 +324,14 @@ catalog.delete("/:id", authMiddleware, async (c) => {
     return c.json({ error: "Item not found or unauthorized" }, 404);
   }
 
-  // Soft delete: set is_archived to 1
-  await c.env.D1.prepare("UPDATE catalog_items SET is_archived = 1, updated_at = current_timestamp WHERE id = ?").bind(id).run();
-
-  return c.json({ message: "Item archived" });
+  // Soft delete: set is_archived to 1 (if seller) or is_banned and is_archived to 1 (if admin)
+  if (role === "admin") {
+    await c.env.D1.prepare("UPDATE catalog_items SET is_archived = 1, is_banned = 1, updated_at = current_timestamp WHERE id = ?").bind(id).run();
+    return c.json({ message: "Item banned" });
+  } else {
+    await c.env.D1.prepare("UPDATE catalog_items SET is_archived = 1, updated_at = current_timestamp WHERE id = ?").bind(id).run();
+    return c.json({ message: "Item archived" });
+  }
 });
 
 catalog.post("/:id/restore", authMiddleware, async (c) => {
@@ -346,8 +355,16 @@ catalog.post("/:id/restore", authMiddleware, async (c) => {
     return c.json({ error: "Item not found or unauthorized" }, 404);
   }
 
-  // Restore: set is_archived to 0
-  await c.env.D1.prepare("UPDATE catalog_items SET is_archived = 0, updated_at = current_timestamp WHERE id = ?").bind(id).run();
+  if (existingItem.is_banned === 1 && role !== "admin") {
+    return c.json({ error: "Barang dibanned oleh admin dan tidak dapat dipulihkan oleh merchant." }, 403);
+  }
+
+  // Restore: set is_archived to 0 (and is_banned to 0 if admin is restoring)
+  if (role === "admin") {
+    await c.env.D1.prepare("UPDATE catalog_items SET is_archived = 0, is_banned = 0, updated_at = current_timestamp WHERE id = ?").bind(id).run();
+  } else {
+    await c.env.D1.prepare("UPDATE catalog_items SET is_archived = 0, updated_at = current_timestamp WHERE id = ?").bind(id).run();
+  }
 
   return c.json({ message: "Item restored" });
 });

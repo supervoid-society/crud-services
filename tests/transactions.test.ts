@@ -26,6 +26,7 @@ CREATE TABLE catalog_items (
     image_id TEXT,
     user_id TEXT NOT NULL,
     is_archived INTEGER DEFAULT 0,
+    is_banned INTEGER DEFAULT 0,
     created_at TEXT DEFAULT current_timestamp,
     updated_at TEXT DEFAULT current_timestamp
 );
@@ -43,26 +44,30 @@ CREATE TABLE transactions (
     FOREIGN KEY (item_id) REFERENCES catalog_items(id) ON DELETE CASCADE
 );
 `;
-    const queries = schema.split(";").filter(q => q.trim());
+    const queries = schema.split(";").filter((q) => q.trim());
     for (const query of queries) {
       await env.D1.prepare(query).run();
     }
 
     // Setup initial data
     itemId = crypto.randomUUID();
-    await env.D1.prepare("INSERT INTO catalog_items (id, name, price, qty, user_id) VALUES (?, ?, ?, ?, ?)")
-      .bind(itemId, "Transaction Test Item", 100, 10, "seller-1").run();
+    await env.D1.prepare("INSERT INTO catalog_items (id, name, price, qty, user_id) VALUES (?, ?, ?, ?, ?)").bind(itemId, "Transaction Test Item", 100, 10, "seller-1").run();
   });
 
   it("should list transactions for a buyer", async () => {
     // Create a dummy transaction
     const txId = crypto.randomUUID();
     await env.D1.prepare("INSERT INTO transactions (id, buyer_id, seller_id, item_id, quantity, amount, status) VALUES (?, ?, ?, ?, ?, ?, ?)")
-      .bind(txId, "buyer-1", "seller-1", itemId, 1, 100, "completed").run();
+      .bind(txId, "buyer-1", "seller-1", itemId, 1, 100, "completed")
+      .run();
 
-    const res = await app.request("/transactions/user", {
-      headers: { Authorization: `Bearer ${buyerToken}` }
-    }, env);
+    const res = await app.request(
+      "/transactions/user",
+      {
+        headers: { Authorization: `Bearer ${buyerToken}` },
+      },
+      env
+    );
 
     expect(res.status).toBe(200);
     const data: any = await res.json();
@@ -72,9 +77,13 @@ CREATE TABLE transactions (
   });
 
   it("should list transactions for a seller", async () => {
-    const res = await app.request("/transactions/user", {
-      headers: { Authorization: `Bearer ${sellerToken}` }
-    }, env);
+    const res = await app.request(
+      "/transactions/user",
+      {
+        headers: { Authorization: `Bearer ${sellerToken}` },
+      },
+      env
+    );
 
     expect(res.status).toBe(200);
     const data: any = await res.json();

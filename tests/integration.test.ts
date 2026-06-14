@@ -21,29 +21,33 @@ DROP TABLE IF EXISTS transactions;
 DROP TABLE IF EXISTS cart;
 DROP TABLE IF EXISTS reviews;
 
-CREATE TABLE catalog_items (id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT, price REAL NOT NULL, qty INTEGER NOT NULL DEFAULT 0, image_id TEXT, user_id TEXT NOT NULL, is_archived INTEGER DEFAULT 0, created_at TEXT DEFAULT current_timestamp, updated_at TEXT DEFAULT current_timestamp);
+CREATE TABLE catalog_items (id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT, price REAL NOT NULL, qty INTEGER NOT NULL DEFAULT 0, image_id TEXT, user_id TEXT NOT NULL, is_archived INTEGER DEFAULT 0, is_banned INTEGER DEFAULT 0, created_at TEXT DEFAULT current_timestamp, updated_at TEXT DEFAULT current_timestamp);
 CREATE TABLE images (id TEXT PRIMARY KEY, data BLOB NOT NULL, content_type TEXT NOT NULL DEFAULT 'image/jpeg', created_at TEXT DEFAULT current_timestamp, updated_at TEXT DEFAULT current_timestamp);
 CREATE TABLE transactions (id TEXT PRIMARY KEY, buyer_id TEXT NOT NULL, seller_id TEXT NOT NULL, item_id TEXT NOT NULL, quantity INTEGER NOT NULL, amount DECIMAL(10,2) NOT NULL, status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'completed', 'failed')), created_at TEXT DEFAULT current_timestamp, updated_at TEXT DEFAULT current_timestamp, FOREIGN KEY (item_id) REFERENCES catalog_items(id) ON DELETE CASCADE);
 CREATE TABLE cart (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, item_id TEXT NOT NULL, quantity INTEGER NOT NULL DEFAULT 1, created_at TEXT DEFAULT current_timestamp, updated_at TEXT DEFAULT current_timestamp, FOREIGN KEY (item_id) REFERENCES catalog_items(id) ON DELETE CASCADE, UNIQUE(user_id, item_id));
 CREATE TABLE reviews (id TEXT PRIMARY KEY, transaction_id TEXT NOT NULL, rating INTEGER NOT NULL CHECK (rating >= 1 AND rating <= 5), comment TEXT, reply TEXT, created_at TEXT DEFAULT current_timestamp, updated_at TEXT DEFAULT current_timestamp, FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE CASCADE);
 `;
-    const queries = schema.split(";").filter(q => q.trim());
+    const queries = schema.split(";").filter((q) => q.trim());
     for (const query of queries) {
       await env.D1.prepare(query).run();
     }
   });
 
   it("1. Seller creates a catalog item", async () => {
-    const res = await app.request("/catalog-items", {
-      method: "POST",
-      body: JSON.stringify({
-        name: "Integration Item",
-        description: "An item for integration testing",
-        price: 50,
-        qty: 100
-      }),
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${sellerToken}` }
-    }, env);
+    const res = await app.request(
+      "/catalog-items",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          name: "Integration Item",
+          description: "An item for integration testing",
+          price: 50,
+          qty: 100,
+        }),
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${sellerToken}` },
+      },
+      env
+    );
     expect(res.status).toBe(200);
     const data: any = await res.json();
     expect(data.id).toBeDefined();
@@ -60,18 +64,26 @@ CREATE TABLE reviews (id TEXT PRIMARY KEY, transaction_id TEXT NOT NULL, rating 
   });
 
   it("3. Buyer adds item to cart", async () => {
-    const res = await app.request("/catalog-items/cart", {
-      method: "POST",
-      body: JSON.stringify({ itemId, quantity: 2 }),
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${buyerToken}` }
-    }, env);
+    const res = await app.request(
+      "/catalog-items/cart",
+      {
+        method: "POST",
+        body: JSON.stringify({ itemId, quantity: 2 }),
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${buyerToken}` },
+      },
+      env
+    );
     expect(res.status).toBe(200);
   });
 
   it("4. Buyer views cart", async () => {
-    const res = await app.request("/catalog-items/cart", {
-      headers: { "Authorization": `Bearer ${buyerToken}` }
-    }, env);
+    const res = await app.request(
+      "/catalog-items/cart",
+      {
+        headers: { Authorization: `Bearer ${buyerToken}` },
+      },
+      env
+    );
     expect(res.status).toBe(200);
     const data: any = await res.json();
     expect(data.length).toBe(1);
@@ -80,16 +92,24 @@ CREATE TABLE reviews (id TEXT PRIMARY KEY, transaction_id TEXT NOT NULL, rating 
   });
 
   it("5. Buyer checks out cart", async () => {
-    const res = await app.request("/catalog-items/checkout", {
-      method: "POST",
-      headers: { "Authorization": `Bearer ${buyerToken}` }
-    }, env);
+    const res = await app.request(
+      "/catalog-items/checkout",
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${buyerToken}` },
+      },
+      env
+    );
     expect(res.status).toBe(200);
 
     // Verify cart is empty
-    const cartRes = await app.request("/catalog-items/cart", {
-      headers: { "Authorization": `Bearer ${buyerToken}` }
-    }, env);
+    const cartRes = await app.request(
+      "/catalog-items/cart",
+      {
+        headers: { Authorization: `Bearer ${buyerToken}` },
+      },
+      env
+    );
     const cartData: any = await cartRes.json();
     expect(cartData.length).toBe(0);
 
@@ -102,15 +122,19 @@ CREATE TABLE reviews (id TEXT PRIMARY KEY, transaction_id TEXT NOT NULL, rating 
   });
 
   it("6. Buyer leaves a review for the transaction", async () => {
-    const res = await app.request("/reviews", {
-      method: "POST",
-      body: JSON.stringify({
-        transaction_id: transactionId,
-        rating: 5,
-        comment: "Excellent integration item!"
-      }),
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${buyerToken}` }
-    }, env);
+    const res = await app.request(
+      "/reviews",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          transaction_id: transactionId,
+          rating: 5,
+          comment: "Excellent integration item!",
+        }),
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${buyerToken}` },
+      },
+      env
+    );
     expect(res.status).toBe(200);
 
     // Verify review is visible
@@ -122,13 +146,17 @@ CREATE TABLE reviews (id TEXT PRIMARY KEY, transaction_id TEXT NOT NULL, rating 
   });
 
   it("7. Seller replies to the review", async () => {
-    const res = await app.request(`/reviews/${reviewId}/reply`, {
-      method: "PUT",
-      body: JSON.stringify({
-        reply: "Thanks for testing!"
-      }),
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${sellerToken}` }
-    }, env);
+    const res = await app.request(
+      `/reviews/${reviewId}/reply`,
+      {
+        method: "PUT",
+        body: JSON.stringify({
+          reply: "Thanks for testing!",
+        }),
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${sellerToken}` },
+      },
+      env
+    );
     expect(res.status).toBe(200);
 
     const reviewsRes = await app.request(`/reviews/${itemId}`, {}, env);

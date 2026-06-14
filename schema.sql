@@ -12,6 +12,7 @@ CREATE TABLE catalog_items (
     image_id TEXT,
     user_id TEXT NOT NULL,
     is_archived INTEGER DEFAULT 0,
+    is_banned INTEGER DEFAULT 0,
     created_at TEXT DEFAULT current_timestamp,
     updated_at TEXT DEFAULT current_timestamp
 );

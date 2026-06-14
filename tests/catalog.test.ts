@@ -26,6 +26,7 @@ CREATE TABLE catalog_items (
     image_id TEXT,
     user_id TEXT NOT NULL,
     is_archived INTEGER DEFAULT 0,
+    is_banned INTEGER DEFAULT 0,
     created_at TEXT DEFAULT current_timestamp,
     updated_at TEXT DEFAULT current_timestamp
 );
@@ -73,7 +74,7 @@ CREATE TABLE reviews (
     FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE CASCADE
 );
 `;
-    const queries = schema.split(";").filter(q => q.trim());
+    const queries = schema.split(";").filter((q) => q.trim());
     for (const query of queries) {
       await env.D1.prepare(query).run();
     }
@@ -86,20 +87,24 @@ CREATE TABLE reviews (
   });
 
   it("should create a catalog item", async () => {
-    const res = await app.request("/catalog-items", {
-      method: "POST",
-      body: JSON.stringify({
-        name: "Test Item",
-        description: "Test Description",
-        price: 100,
-        qty: 10,
-        user_id: "seller-1"
-      }),
-      headers: { 
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${token}`
-      }
-    }, env);
+    const res = await app.request(
+      "/catalog-items",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          name: "Test Item",
+          description: "Test Description",
+          price: 100,
+          qty: 10,
+          user_id: "seller-1",
+        }),
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      },
+      env
+    );
 
     expect(res.status).toBe(200);
     const data: any = await res.json();
@@ -116,7 +121,7 @@ CREATE TABLE reviews (
 
   it("should get a single catalog item", async () => {
     const itemsRes = await app.request("/catalog-items", {}, env);
-    const items = await itemsRes.json() as any[];
+    const items = (await itemsRes.json()) as any[];
     const itemId = items[0].id;
 
     const res = await app.request(`/catalog-items/${itemId}`, {}, env);
@@ -127,21 +132,25 @@ CREATE TABLE reviews (
 
   it("should update a catalog item", async () => {
     const itemsRes = await app.request("/catalog-items", {}, env);
-    const items = await itemsRes.json() as any[];
+    const items = (await itemsRes.json()) as any[];
     const itemId = items[0].id;
 
-    const res = await app.request(`/catalog-items/${itemId}`, {
-      method: "PUT",
-      body: JSON.stringify({
-        name: "Updated Item",
-        price: 150,
-        qty: 5
-      }),
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${token}`
-      }
-    }, env);
+    const res = await app.request(
+      `/catalog-items/${itemId}`,
+      {
+        method: "PUT",
+        body: JSON.stringify({
+          name: "Updated Item",
+          price: 150,
+          qty: 5,
+        }),
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      },
+      env
+    );
 
     expect(res.status).toBe(200);
     const data: any = await res.json();
@@ -150,22 +159,26 @@ CREATE TABLE reviews (
 
   it("should add to cart", async () => {
     const itemsRes = await app.request("/catalog-items", {}, env);
-    const items = await itemsRes.json() as any[];
+    const items = (await itemsRes.json()) as any[];
     const itemId = items[0].id;
 
     const buyerToken = await sign({ userId: "buyer-1", username: "buyer", role: "buyer" }, env.JWT_SECRET);
 
-    const res = await app.request("/catalog-items/cart", {
-      method: "POST",
-      body: JSON.stringify({
-        itemId,
-        quantity: 2
-      }),
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${buyerToken}`
-      }
-    }, env);
+    const res = await app.request(
+      "/catalog-items/cart",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          itemId,
+          quantity: 2,
+        }),
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${buyerToken}`,
+        },
+      },
+      env
+    );
 
     expect(res.status).toBe(200);
     const data: any = await res.json();
@@ -175,11 +188,15 @@ CREATE TABLE reviews (
   it("should list cart items", async () => {
     const buyerToken = await sign({ userId: "buyer-1", username: "buyer", role: "buyer" }, env.JWT_SECRET);
 
-    const res = await app.request("/catalog-items/cart", {
-      headers: {
-        "Authorization": `Bearer ${buyerToken}`
-      }
-    }, env);
+    const res = await app.request(
+      "/catalog-items/cart",
+      {
+        headers: {
+          Authorization: `Bearer ${buyerToken}`,
+        },
+      },
+      env
+    );
 
     expect(res.status).toBe(200);
     const data: any = await res.json();
@@ -189,28 +206,36 @@ CREATE TABLE reviews (
 
   it("should archive a catalog item (soft delete)", async () => {
     // First create a new item to archive
-    const createRes = await app.request("/catalog-items", {
-      method: "POST",
-      body: JSON.stringify({
-        name: "Archive Me",
-        price: 50,
-        qty: 1,
-        user_id: "seller-1"
-      }),
-      headers: { 
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${token}`
-      }
-    }, env);
-    const item = await createRes.json() as any;
+    const createRes = await app.request(
+      "/catalog-items",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          name: "Archive Me",
+          price: 50,
+          qty: 1,
+          user_id: "seller-1",
+        }),
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      },
+      env
+    );
+    const item = (await createRes.json()) as any;
     const itemId = item.id;
 
-    const res = await app.request(`/catalog-items/${itemId}`, {
-      method: "DELETE",
-      headers: {
-        "Authorization": `Bearer ${token}`
-      }
-    }, env);
+    const res = await app.request(
+      `/catalog-items/${itemId}`,
+      {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      },
+      env
+    );
 
     expect(res.status).toBe(200);
     const data: any = await res.json();
@@ -226,12 +251,16 @@ CREATE TABLE reviews (
     const dbItem: any = await env.D1.prepare("SELECT id FROM catalog_items WHERE is_archived = 1 LIMIT 1").first();
     const itemId = dbItem.id;
 
-    const res = await app.request(`/catalog-items/${itemId}/restore`, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${token}`
-      }
-    }, env);
+    const res = await app.request(
+      `/catalog-items/${itemId}/restore`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      },
+      env
+    );
 
     expect(res.status).toBe(200);
     const data: any = await res.json();
