@@ -6,7 +6,8 @@
     "deploy": "wrangler deploy --minify",
     "cf-typegen": "wrangler types --env-interface CloudflareBindings",
     "lint": "eslint . --ext .ts",
-    "test": "vitest"
+    "test": "vitest",
+    "format": "prettier --write ."
   },
   "dependencies": {
     "@tsndr/cloudflare-worker-jwt": "^3.2.1",

@@ -19,10 +19,13 @@ const adminFeatures = new Hono<{ Bindings: Bindings; Variables: { jwtPayload: JW
 adminFeatures.get("/platform-settings", authMiddleware, async (c) => {
   try {
     const settings = await c.env.D1.prepare("SELECT * FROM platform_settings").all();
-    const result = (settings.results as any[]).reduce((acc, cur) => {
-      acc[cur.key] = cur.value;
-      return acc;
-    }, {} as Record<string, string>);
+    const result = (settings.results as any[]).reduce(
+      (acc, cur) => {
+        acc[cur.key] = cur.value;
+        return acc;
+      },
+      {} as Record<string, string>
+    );
 
     return c.json({
       fee_type: result.fee_type || "percentage",
