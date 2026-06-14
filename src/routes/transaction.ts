@@ -96,8 +96,8 @@ transaction.put("/:id", authMiddleware, async (c) => {
 
 // Checkout endpoint
 transaction.post("/checkout", authMiddleware, async (c) => {
-  const { itemId, quantity, balance, signature } = await c.req.json();
-  console.log("Checkout request:", { itemId, quantity, balance });
+  const { itemId, quantity, balance, signature, promoCode } = await c.req.json();
+  console.log("Checkout request:", { itemId, quantity, balance, promoCode });
 
   const payload = c.get("jwtPayload");
 
@@ -150,15 +150,77 @@ transaction.post("/checkout", authMiddleware, async (c) => {
 
   const amount = item.price * actualQuantity;
 
-  if (balance < amount) {
-    return c.json({ error: "Insufficient balance" }, 400);
+  // 1. Fetch Platform Settings
+  let platformFee = 0;
+  try {
+    const settings = await c.env.D1.prepare("SELECT * FROM platform_settings").all();
+    const resultSettings = (settings.results as any[]).reduce((acc, cur) => {
+      acc[cur.key] = cur.value;
+      return acc;
+    }, {} as Record<string, string>);
+
+    const feeType = resultSettings.fee_type || "percentage";
+    const feePercentage = parseFloat(resultSettings.fee_percentage || "0.00");
+    const feeFixed = parseFloat(resultSettings.fee_fixed || "0.00");
+
+    if (feeType === "percentage") {
+      platformFee = amount * (feePercentage / 100);
+    } else if (feeType === "fixed") {
+      platformFee = feeFixed;
+    } else if (feeType === "both") {
+      platformFee = (amount * (feePercentage / 100)) + feeFixed;
+    }
+  } catch (err) {
+    console.error("Failed to fetch platform settings:", err);
+  }
+
+  // 2. Validate Promo Code if provided
+  let discountAmount = 0;
+  let validatedPromoCode: string | null = null;
+  if (promoCode) {
+    try {
+      const promo = (await c.env.D1.prepare("SELECT * FROM promos WHERE code = ?").bind(promoCode.toUpperCase().trim()).first()) as any;
+      if (!promo) {
+        return c.json({ error: "Promo code not found" }, 400);
+      }
+      if (promo.is_active === 0) {
+        return c.json({ error: "Promo code is inactive" }, 400);
+      }
+      if (promo.max_uses !== null && promo.used_count >= promo.max_uses) {
+        return c.json({ error: "Promo code usage limit has been reached" }, 400);
+      }
+
+      validatedPromoCode = promo.code;
+      if (promo.type === "percentage") {
+        discountAmount = amount * (promo.value / 100);
+      } else if (promo.type === "fixed") {
+        discountAmount = promo.value;
+      }
+      discountAmount = Math.min(discountAmount, amount); // Cap discount at item price
+    } catch (err) {
+      console.error("Failed to validate promo code:", err);
+      return c.json({ error: "Failed to validate promo code" }, 500);
+    }
+  }
+
+  const buyerCost = amount + platformFee - discountAmount;
+
+  if (balance < buyerCost) {
+    return c.json({ error: `Insufficient balance. Required: ${buyerCost.toLocaleString("id-ID")}` }, 400);
   }
 
   // Create transaction
   const transactionId = crypto.randomUUID();
-  await c.env.D1.prepare("INSERT INTO transactions (id, buyer_id, seller_id, item_id, quantity, amount, status) VALUES (?, ?, ?, ?, ?, ?, 'completed')")
-    .bind(transactionId, buyerId, item.sellerId, catalogItemId, actualQuantity, amount)
+  await c.env.D1.prepare(
+    "INSERT INTO transactions (id, buyer_id, seller_id, item_id, quantity, amount, status, platform_fee, promo_code, discount_amount) VALUES (?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?)"
+  )
+    .bind(transactionId, buyerId, item.sellerId, catalogItemId, actualQuantity, amount, platformFee, validatedPromoCode, discountAmount)
     .run();
+
+  // If promo used, increment used_count
+  if (validatedPromoCode && discountAmount > 0) {
+    await c.env.D1.prepare("UPDATE promos SET used_count = used_count + 1 WHERE code = ?").bind(validatedPromoCode).run();
+  }
 
   // Reduce stock
   const newQty = item.qty - actualQuantity;
@@ -167,11 +229,25 @@ transaction.post("/checkout", authMiddleware, async (c) => {
   // Remove item from cart
   await c.env.D1.prepare("DELETE FROM cart WHERE id = ? AND user_id = ?").bind(itemId, buyerId).run();
 
-  // Create signature for transfer
-  const transferData = { transactionId, sellerId: item.sellerId, amount, buyerId };
+  // Create signature for transfer (incorporating fees and discount amount)
+  const transferData = {
+    transactionId,
+    sellerId: item.sellerId,
+    amount,
+    buyerId,
+    platform_fee: platformFee,
+    discount_amount: discountAmount,
+  };
   const transferSignature = await sign(transferData, c.env.JWT_SECRET);
 
-  return c.json({ transactionId, sellerId: item.sellerId, amount, signature: transferSignature });
+  return c.json({
+    transactionId,
+    sellerId: item.sellerId,
+    amount,
+    platformFee,
+    discountAmount,
+    signature: transferSignature,
+  });
 });
 
 // Test route

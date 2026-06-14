@@ -33,6 +33,9 @@ CREATE TABLE transactions (
     quantity INTEGER NOT NULL,
     amount DECIMAL(10,2) NOT NULL,
     status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'completed', 'failed')),
+    platform_fee REAL DEFAULT 0.0,
+    promo_code TEXT,
+    discount_amount REAL DEFAULT 0.0,
     created_at TEXT DEFAULT current_timestamp,
     updated_at TEXT DEFAULT current_timestamp,
     FOREIGN KEY (item_id) REFERENCES catalog_items(id) ON DELETE CASCADE
@@ -49,9 +52,27 @@ CREATE TABLE cart (
     UNIQUE(user_id, item_id)
 );
 
-DROP TABLE IF EXISTS reviews;
+CREATE TABLE IF NOT EXISTS platform_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
 
-CREATE TABLE reviews (
+INSERT OR IGNORE INTO platform_settings (key, value) VALUES ('fee_type', 'percentage');
+INSERT OR IGNORE INTO platform_settings (key, value) VALUES ('fee_percentage', '0.00');
+INSERT OR IGNORE INTO platform_settings (key, value) VALUES ('fee_fixed', '0.00');
+
+CREATE TABLE IF NOT EXISTS promos (
+    id TEXT PRIMARY KEY,
+    code TEXT NOT NULL UNIQUE,
+    type TEXT NOT NULL CHECK (type IN ('percentage', 'fixed')),
+    value REAL NOT NULL,
+    is_active INTEGER DEFAULT 1,
+    max_uses INTEGER,
+    used_count INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT current_timestamp
+);
+
+CREATE TABLE IF NOT EXISTS reviews (
     id TEXT PRIMARY KEY,
     transaction_id TEXT NOT NULL,
     rating INTEGER NOT NULL CHECK (rating >= 1 AND rating <= 5),

@@ -4,6 +4,7 @@ import catalogRoutes from "./routes/catalog";
 import imageRoutes from "./routes/images";
 import transactionRoutes from "./routes/transaction";
 import reviewRoutes from "./routes/reviews";
+import adminFeatures from "./routes/admin-features";
 
 interface JWTPayload {
   userId: string;
@@ -29,5 +30,6 @@ app.route("/catalog-items", catalogRoutes);
 app.route("/images", imageRoutes);
 app.route("/transactions", transactionRoutes);
 app.route("/reviews", reviewRoutes);
+app.route("/admin-features", adminFeatures);
 
 export default app;
