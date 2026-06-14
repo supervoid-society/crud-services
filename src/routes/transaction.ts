@@ -108,6 +108,7 @@ transaction.post("/checkout", authMiddleware, async (c) => {
   const buyerId = payload.userId;
 
   // Verify balance signature
+  let adminBalance = 0;
   try {
     const decoded = await verify(signature, c.env.JWT_SECRET);
     if (!decoded) {
@@ -118,6 +119,7 @@ transaction.post("/checkout", authMiddleware, async (c) => {
       // 5 minutes expiry
       return c.json({ error: "Invalid signature or expired" }, 400);
     }
+    adminBalance = Number(sigPayload.adminBalance || 0);
   } catch (error) {
     return c.json({ error: "Signature verification failed" }, 400);
   }
@@ -154,10 +156,13 @@ transaction.post("/checkout", authMiddleware, async (c) => {
   let platformFee = 0;
   try {
     const settings = await c.env.D1.prepare("SELECT * FROM platform_settings").all();
-    const resultSettings = (settings.results as any[]).reduce((acc, cur) => {
-      acc[cur.key] = cur.value;
-      return acc;
-    }, {} as Record<string, string>);
+    const resultSettings = (settings.results as any[]).reduce(
+      (acc, cur) => {
+        acc[cur.key] = cur.value;
+        return acc;
+      },
+      {} as Record<string, string>
+    );
 
     const feeType = resultSettings.fee_type || "percentage";
     const feePercentage = parseFloat(resultSettings.fee_percentage || "0.00");
@@ -168,7 +173,7 @@ transaction.post("/checkout", authMiddleware, async (c) => {
     } else if (feeType === "fixed") {
       platformFee = feeFixed;
     } else if (feeType === "both") {
-      platformFee = (amount * (feePercentage / 100)) + feeFixed;
+      platformFee = amount * (feePercentage / 100) + feeFixed;
     }
   } catch (err) {
     console.error("Failed to fetch platform settings:", err);
@@ -201,6 +206,11 @@ transaction.post("/checkout", authMiddleware, async (c) => {
       console.error("Failed to validate promo code:", err);
       return c.json({ error: "Failed to validate promo code" }, 500);
     }
+  }
+
+  // Check if admin wallet has enough balance to cover the discount
+  if (discountAmount > 0 && adminBalance < discountAmount) {
+    return c.json({ error: "Transaksi gagal: Saldo wallet admin tidak cukup untuk mensubsidi diskon promo." }, 400);
   }
 
   const buyerCost = amount + platformFee - discountAmount;
@@ -248,6 +258,31 @@ transaction.post("/checkout", authMiddleware, async (c) => {
     discountAmount,
     signature: transferSignature,
   });
+});
+
+// Cancel transaction / Mark as failed (Rollback stock and cart if payment fails)
+transaction.post("/cancel", authMiddleware, async (c) => {
+  const { transactionId } = await c.req.json();
+  const payload = c.get("jwtPayload");
+  const buyerId = payload.userId;
+
+  const tx = (await c.env.D1.prepare("SELECT * FROM transactions WHERE id = ? AND buyer_id = ?").bind(transactionId, buyerId).first()) as any;
+  if (!tx) {
+    return c.json({ error: "Transaction not found" }, 404);
+  }
+
+  if (tx.status === "completed") {
+    // Rollback stock
+    await c.env.D1.prepare("UPDATE catalog_items SET qty = qty + ? WHERE id = ?").bind(tx.quantity, tx.item_id).run();
+
+    // Update status to failed
+    await c.env.D1.prepare("UPDATE transactions SET status = 'failed', updated_at = current_timestamp WHERE id = ?").bind(transactionId).run();
+
+    // Re-insert cart item
+    await c.env.D1.prepare("INSERT OR IGNORE INTO cart (id, user_id, item_id, quantity) VALUES (?, ?, ?, ?)").bind(crypto.randomUUID(), buyerId, tx.item_id, tx.quantity).run();
+  }
+
+  return c.json({ message: "Transaction cancelled and cart/stock restored" });
 });
 
 // Test route

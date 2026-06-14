@@ -16,6 +16,7 @@ describe("CRUD Services - Transactions", () => {
     const schema = `
 DROP TABLE IF EXISTS catalog_items;
 DROP TABLE IF EXISTS transactions;
+DROP TABLE IF EXISTS cart;
 
 CREATE TABLE catalog_items (
     id TEXT PRIMARY KEY,
@@ -39,9 +40,23 @@ CREATE TABLE transactions (
     quantity INTEGER NOT NULL,
     amount DECIMAL(10,2) NOT NULL,
     status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'completed', 'failed')),
+    platform_fee REAL DEFAULT 0.0,
+    promo_code TEXT,
+    discount_amount REAL DEFAULT 0.0,
     created_at TEXT DEFAULT current_timestamp,
     updated_at TEXT DEFAULT current_timestamp,
     FOREIGN KEY (item_id) REFERENCES catalog_items(id) ON DELETE CASCADE
+);
+
+CREATE TABLE cart (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    item_id TEXT NOT NULL,
+    quantity INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT DEFAULT current_timestamp,
+    updated_at TEXT DEFAULT current_timestamp,
+    FOREIGN KEY (item_id) REFERENCES catalog_items(id) ON DELETE CASCADE,
+    UNIQUE(user_id, item_id)
 );
 `;
     const queries = schema.split(";").filter((q) => q.trim());
@@ -89,5 +104,42 @@ CREATE TABLE transactions (
     const data: any = await res.json();
     expect(Array.isArray(data)).toBe(true);
     expect(data.length).toBeGreaterThan(0);
+  });
+
+  it("should cancel a transaction and restore stock/cart", async () => {
+    const txId = crypto.randomUUID();
+    await env.D1.prepare("INSERT INTO transactions (id, buyer_id, seller_id, item_id, quantity, amount, status) VALUES (?, ?, ?, ?, ?, ?, 'completed')")
+      .bind(txId, "buyer-1", "seller-1", itemId, 3, 300)
+      .run();
+
+    // Call cancel endpoint
+    const res = await app.request(
+      "/transactions/cancel",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${buyerToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ transactionId: txId }),
+      },
+      env
+    );
+
+    expect(res.status).toBe(200);
+    const body: any = await res.json();
+    expect(body.message).toContain("cancelled");
+
+    // Verify transaction is failed
+    const tx = await env.D1.prepare("SELECT status FROM transactions WHERE id = ?").bind(txId).first();
+    expect(tx?.status).toBe("failed");
+
+    // Verify stock is restored (10 + 3 = 13)
+    const item = await env.D1.prepare("SELECT qty FROM catalog_items WHERE id = ?").bind(itemId).first();
+    expect(item?.qty).toBe(13);
+
+    // Verify item is back in cart
+    const cartItem = await env.D1.prepare("SELECT quantity FROM cart WHERE user_id = ? AND item_id = ?").bind("buyer-1", itemId).first();
+    expect(cartItem?.quantity).toBe(3);
   });
 });
